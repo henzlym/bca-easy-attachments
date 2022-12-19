@@ -35,22 +35,22 @@ define('EASY_ATTACHMENTS_MEDIA_LIBRARY_URL', $upload_dir['url']);
 function easy_attachments_block_assets()
 { 
     // phpcs:ignore
-
+    $asset = include_once EASY_ATTACHMENTS_PATH . '/build/index.asset.php';
     // Register block editor script for backend.
     wp_register_script(
         'easy_attachments-block-js', // Handle.
-        plugins_url('dist/blocks.build.js', dirname(__FILE__)), // Block.build.js: We register the block here. Built with Webpack.
+        EASY_ATTACHMENTS_URI . 'build/index.js', // Block.build.js: We register the block here. Built with Webpack.
         array('wp-blocks', 'wp-i18n', 'wp-element', 'wp-editor'), // Dependencies, defined above.
-        null, // filemtime( plugin_dir_path( __DIR__ ) . 'dist/blocks.build.js' ), // Version: filemtime — Gets file modification time.
+        $asset['version'], // filemtime( plugin_dir_path( __DIR__ ) . 'dist/blocks.build.js' ), // Version: filemtime — Gets file modification time.
         true // Enqueue the script in the footer.
     );
 
     // Register block editor styles for backend.
     wp_register_style(
         'easy_attachments-block-editor-css', // Handle.
-        plugins_url('dist/blocks.editor.build.css', dirname(__FILE__)), // Block editor CSS.
+        EASY_ATTACHMENTS_URI . 'build/index.css', // Block editor CSS.
         array('wp-edit-blocks'), // Dependency to include the CSS after it.
-        null // filemtime( plugin_dir_path( __DIR__ ) . 'dist/blocks.editor.build.css' ) // Version: File modification time.
+        $asset['version'] // filemtime( plugin_dir_path( __DIR__ ) . 'dist/blocks.editor.build.css' ) // Version: File modification time.
     );
 
     // WP Localized globals. Use dynamic PHP stuff in JavaScript via `Global` object.
@@ -92,130 +92,94 @@ add_action('rest_api_init', function () {
 
     ));
 });
+
 function easy_attachments_download(WP_REST_Request $request)
 {
     require_once ABSPATH . "wp-admin/includes/file.php";
     require_once ABSPATH . "wp-admin/includes/media.php";
     require_once ABSPATH . "wp-admin/includes/image.php";
 
-
-
     // You can get the combined, merged set of parameters:
     $post_id = (null !== $request->get_param('post_id')) ? $request->get_param('post_id') : 0;
     $photo = (null !== $request->get_param('photo')) ? $request->get_param('photo') : null;
-    $photo_id = sanitize_text_field($photo['id']);
     $download_link = (null !== $request->get_param('download_link')) ? sanitize_text_field($request->get_param('download_link')) : "";
-    $media_path = EASY_ATTACHMENTS_MEDIA_LIBRARY_PATH; // Temp Image Path
-    $temp_path = EASY_ATTACHMENTS_MEDIA_LIBRARY_PATH_TEMP;
-    $media_url = EASY_ATTACHMENTS_MEDIA_LIBRARY_URL . '/'; // Temp Image Url
-    $filename = $photo_id . '.jpg';
-    $img_path = $temp_path . '/' . $filename;
 
+    $photo_alt_description = isset($photo['alt_description']) ? sanitize_text_field($photo['alt_description']) : "";
     $photo_description = isset($photo['description']) ? sanitize_text_field($photo['description']) : "";
+
     $photo_user_name = isset($photo['user']['name']) ? sanitize_text_field($photo['user']['name']) : "";
-    $photo_user_username = isset($photo['user']['username']) ? sanitize_text_field($photo['user']['username']) : "";
-    $photo_user_link = isset($photo['user']['links']['html']) ? esc_url_raw($photo['user']['links']['html']) : "";
+    $title = "";
     
     if ($photo_description !== "") {
         $title = $photo_description;
         $photo_description = "$title / $photo_user_name via Unsplash";
-    } else {
-        $title = "$photo_user_name via Unsplash";
     }
 
     // Sanity check inputs
     if (!isset($download_link) || empty($download_link)) {
         return $result;
     }
+ 
+    $url = esc_url_raw( $download_link );
+    $parse_url = wp_parse_url( $url );
+    $args = [];
+    wp_parse_str( $parse_url[ 'query' ], $args );
+    // Specific to Unsplash as the serve urls without file extensions.
+    $file_extension = isset( $args['fm'] ) ? '.' . $args['fm'] : '';
+    $url = $parse_url['scheme'] . '://' . $parse_url['host'] . $parse_url['path'];
+    // error_log(print_r([$args,$url],true));
 
-    // $url = "http://wordpress.org/about/images/logos/wordpress-logo-stacked-rgb.png";
-    if (!is_dir($temp_path)) {
-        wp_mkdir_p($temp_path);
+    // $image = media_sideload_image($url, $post_id, $photo_description, 'id');
+    
+    $file_array         = array();
+    $file_array['name'] = wp_basename( $url ) . $file_extension;
+
+    // Download file to temp location.
+    $file_array['tmp_name'] = download_url( $url );
+    $file_array['type'] = 'image/jpeg';
+    $file_array['error'] = 0;
+    $file_array['size'] = filesize( $file_array['tmp_name'] );
+
+    // If error storing temporarily, return the error.
+    if ( is_wp_error( $file_array['tmp_name'] ) ) {
+        return  ['action' => 'error', 'error' => $file_array, 'image_url' => $url, 'step' => 'download_url' ];
     }
 
-    if (function_exists('copy')) {
-        // Save file to server using copy() function
-        $saved_file = @copy($download_link . 'jpg', $img_path);
-        if ($saved_file) {
-            //  SUCCESS - Image saved
+    // Do the validation and storage stuff.
+    $image = media_handle_sideload( $file_array, $post_id, $photo_description );
 
-            // Copy file from uploads/easy-attachments to a media library directory.
-            $new_filename = $media_path . '/' . $filename;
-            $copy_file = @copy($img_path, $new_filename);
-
-            if (!$copy_file) {
-                // Error         
-                $response = array(
-                    'success' => false,
-                    'msg' => __('Unable to copy image to the media library. Please check your server permissions.', 'easy-attachments')
-                );
-            } else {
-
-                $filetype = wp_check_filetype(basename($new_filename), null);
-                //  SUCCESS - Image saved
-                // Build attachment array
-                $attachment = array(
-                    'guid' => $media_url . basename($new_filename),
-                    'post_mime_type' => $filetype['type'],
-                    'post_title' => $title,
-                    'post_excerpt' => $photo_description,
-                    'post_content' => '',
-                    'post_status' => 'inherit'
-                );
-
-                $image_id = wp_insert_attachment($attachment, $new_filename, $post_id); // Insert as attachment
-                $easy_attachments = array();
-                $easy_attachments['ID'] = $photo_id;
-                $easy_attachments['img_credit'] = 'via Unsplash';
-                $easy_attachments['img_artist'] = $photo_user_username;
-                $easy_attachments['credit_line'] = "Photo by <a href='" . $photo_user_link . "'>$photo_user_username</a> / via Unsplash";
-
-                update_post_meta($image_id, '_wp_attachment_image_alt', $photo_description); // Add alt text
-                update_post_meta($image_id, 'easy_attachments', $easy_attachments);
-
-                $attach_data = wp_generate_attachment_metadata($image_id, $new_filename); // Generate metadata
-                wp_update_attachment_metadata($image_id, $attach_data); // Add metadata
-
-                if (file_exists($new_filename)) {
-                    // Success
-                    $response = array(
-                        'success' => true,
-                        'msg' => __('Image successfully uploaded to your media library!', 'easy-attachments'),
-                        'id' => $image_id,
-                        'url' => wp_get_attachment_url($image_id),
-                        'alt' => $photo_description,
-                        'caption' => $photo_description,
-                        'admin_url' => admin_url(),
-                    );
-                } else {
-
-                    // ERROR - File does NOT exist
-                    $response = array(
-                        'error' => true,
-                        'msg' => __('Uploaded image not found, please ensure you have proper permissions set on the uploads directory.', 'easy-attachments'),
-                        'path' => '',
-                        'filename' => ''
-                    );
-                }
-            }
-        } else {
-
-            // ERROR - Error on save
-            $response = array(
-                'error' => true,
-                'msg' => __('Unable to download image to server, please check the server permissions of the easy-attachments folder in your WP uploads directory.', 'easy-attachments'),
-                'path' => '',
-                'filename' => ''
-            );
-        }
-    } else {
-        $response = array(
-            'error' => true,
-            'msg' => __('The core PHP copy() function is not available on your server. Please contact your server administrator to upgrade your PHP version.', 'easy-attachments'),
-            'path' => $path,
-            'filename' => $filename
-        );
+    // If error storing permanently, unlink.
+    if ( is_wp_error( $image ) ) {
+        @unlink( $file_array['tmp_name'] );
+        return  ['action' => 'error', 'error' => $image, 'image_url' => $url, 'step' => 'media_handle_sideload' ];
     }
 
-    wp_send_json($response);
+    // Store the original attachment source in meta.
+    add_post_meta( $image, '_source_url', $file );
+
+    $attachment = get_post( $image );
+
+	if( !$attachment ) {
+        return  ['action' => 'error', 'message' => 'Attachment not found.'];
+	}
+    
+    $updated = wp_update_post( array(
+		'ID' => $attachment->ID,
+		'post_title' => $title,
+		'post_content' => $photo_description,
+		'post_excerpt' => $photo_description,
+	) );
+	
+    update_post_meta( $attachment->ID, '_wp_attachment_image_alt', $title );
+	    
+    return array(
+        'success' => true,
+        'msg' => __('Image successfully uploaded to your media library!', 'easy-attachments'),
+        'id' => $attachment->ID,
+        'url' => wp_get_attachment_url($attachment->ID),
+        'alt' => $photo_description,
+        'caption' => $photo_description,
+        'admin_url' => admin_url(),
+    );
+
 }

@@ -1,9 +1,9 @@
 import './editor.scss';
 import SearchIcon from  '../svg/SearchIcon'
-import CameraIcon from "../block/CameraIcon";
+import Diaphragm from "../svg/diaphragm";
 import Image from './Image';
 
-const querystring = require('querystring');
+import { addQueryArgs } from '@wordpress/url';
 const { Fragment, Component } = wp.element;
 const { ENTER } = wp.keycodes;
 const { TextControl, Button } = wp.components;
@@ -15,7 +15,7 @@ export default class Sidebar extends Component {
         super(...arguments);
         this.props = props;
         this.state = {
-            searchTerm: "",
+            searchTerm: " ",
             selectedCollection: 0,
             photos: [],
             featuredCollections: [],
@@ -30,21 +30,40 @@ export default class Sidebar extends Component {
     componentDidMount() {
         const currentPostID = wp.data.select("core/editor").getCurrentPostId();
         this.setState({ currentPostID });
-        this.getUnsplashFeaturedCollections();
+        this.gethUnsplashPhotos();
     }
 
     easyAttachmentsFetch(path, fetchMethod, params = null) {
         let queryData = params !== null ? Object.assign({ client_id: accessKey }, params) : { client_id: accessKey };
-        let querystrings = querystring.stringify(queryData);
-        let url = `https://api.unsplash.com/${path}?${querystrings}`;
+        let url = addQueryArgs( `https://api.unsplash.com/${path}`, queryData );
 
         return fetch(url, {
             method: fetchMethod
         })
     }
+    gethUnsplashPhotos() {
+
+        let response = this.easyAttachmentsFetch('photos', 'GET');
+        
+        response.then((response) => {
+
+            let perPage = response.headers.get('x-per-page');
+            let total = response.headers.get('x-total');
+            this.setState({ lastPage: Math.ceil( total / perPage )  })
+            return response.json();
+
+        }).then((response) => {
+            if (response.length > 0) {
+                this.setState({ photos: response })
+            } else {
+                this.setState({ photos: [] })
+            }
+        })
+
+    }
     getUnsplashFeaturedCollections() {
 
-        let response = this.easyAttachmentsFetch('collections/featured', 'GET');
+        let response = this.easyAttachmentsFetch('collections', 'GET');
 
         response.then((response) => {
             return response.json();
@@ -197,7 +216,7 @@ export default class Sidebar extends Component {
 
                     name="easy-attachments"
                     title="Easy Attachments"
-                    icon={<CameraIcon />}
+                    icon={<Diaphragm />}
                 >
                     <div className="easy-attachments-sidebar">
                         <div className="easy-attachments-sidebar_quicksearch">

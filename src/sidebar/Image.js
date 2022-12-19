@@ -18,7 +18,7 @@ export default class Image extends Component {
     }
     render() {
 
-        const { photo: { id, user: { username, profile_image }, description, urls, links: { download_location } }, download, isDownloading, isDownloaded } = this.props;
+        const { photo: { id, height, width, user: { username, profile_image }, description, urls, links: { download_location } }, download, isDownloading, isDownloaded } = this.props;
         let downloading = (isDownloading == id) ? ' downloading' : '';
         let downloaded = (isDownloaded == id) ? ' downloaded' : ''; 
         return (
@@ -35,7 +35,7 @@ export default class Image extends Component {
                     <img src={profile_image.large} alt="" />
                     <span>{username}</span>
                 </div>
-                <img src={urls.regular} alt={description} srcset="" />
+                <img height={height} width={width} src={urls.regular} alt={description} srcset="" />
                 <div className="easy-attachments-download_container">
                     <button
                         title="Download into post"
