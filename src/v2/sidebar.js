@@ -5,7 +5,7 @@ import { PluginSidebar, PluginSidebarMoreMenuItem } from '@wordpress/edit-post';
 import { useDispatch, useSelect, dispatch, register, select } from '@wordpress/data';
 import { store as core } from '@wordpress/core-data';
 import { store as editor } from '@wordpress/editor';
-
+import { addQueryArgs } from '@wordpress/url';
 import { useFetch } from '@sidebar/hooks';
 import { Diaphragm } from "@sidebar/icons";
 import { SearchUI } from '@sidebar/components';
@@ -32,7 +32,6 @@ function Sidebar() {
     const { baseURI, images, isDownloaded, isDownloading, options, path, searchTerm } = state;
     const url = baseURI + path;
     const { data } = useFetch(url, options);
-    console.log(data);
 
     const downloadImage = (photo, action = "") => {
 
@@ -99,14 +98,25 @@ function Sidebar() {
                 <div className="easy-attachments-sidebar">
                     <SearchUI
                         results={() => {
+                            
                             if (data == null ) return null;
                             
                             if (data.length == 0) return null;
                             
+                            if ( typeof data.errors !== 'undefined') return null;
+                                                        
+                            let images = [];
+                            
+                            if ( typeof data.results !== 'undefined' ) {
+                                images = [...data.results];
+                            } else {
+                                images = [...data];
+                            }
+                            
                             return(
                                 <div className="easy-attachments-sidebar_photos">
                                     {
-                                        data.map((image, i) => {
+                                        images.map((image, i) => {
                                             return (
                                                 <Image
                                                     isDownloading={isDownloading}
@@ -122,8 +132,14 @@ function Sidebar() {
                             
                         }}
                         value={searchTerm}
-                        onChange={(term) => {
-                            setState({ ...state, searchTerm: term })
+                        onChange={(query) => {
+                            const newPath = ( query.length ) ? "search/photos" : path;
+                                                        
+                            setState({ 
+                                ...state, 
+                                searchTerm: query, 
+                                path:addQueryArgs( `${newPath}`, {query} ),
+                            })
                         }}
                     />
                 </div>

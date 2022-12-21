@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState } from '@wordpress/element';
 import { SearchControl } from '@wordpress/components';
 
 function Search(props) {
-console.log(props);
+
     const { onChange, results, value } = props;
 
     return (
