@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Plugin Name: Blkcanvas - Easy Attachments
+ * Plugin Name: Blk Canvas - Easy Attachments
  * Plugin URI: https://github.com/henzlym/blkcanvas-easy-attachments/
  * Description: Download beautiful photos without the hassle or pay.
  * Author: Henzly Meghie
