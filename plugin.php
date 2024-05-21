@@ -3,9 +3,9 @@
 /**
  * Plugin Name: Blk Canvas - Easy Attachments
  * Plugin URI: https://github.com/henzlym/blkcanvas-easy-attachments/
- * Description: Download beautiful photos without the hassle or pay.
+ * Description: Effortlessly enhance your content with stunning, high-quality photos at no cost. Blk Canvas - Easy Attachments allows you to seamlessly download and integrate beautiful images into your posts and pages, without the hassle of licensing fees or complicated processes.
  * Author: Henzly Meghie
- * Author URI: https://blk-canvas.com/
+ * Author URI: https://henzlymeghie.com/
  * Version: 1.0.0
  * License: GPL2+
  * License URI: https://www.gnu.org/licenses/gpl-2.0.txt
