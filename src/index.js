@@ -1,9 +1,16 @@
-import Sidebar from './v2/sidebar';
+/**
+ * Easy Attachments Plugin Entry Point
+ *
+ * @since 1.0.0
+ * @package EasyAttachments
+ */
 
-const { registerPlugin } = wp.plugins;
+import { registerPlugin } from "@wordpress/plugins";
+import Sidebar from "./components/Sidebar";
 
-registerPlugin('easy-attachments-sidebar', {
-    render: function () {
-        return <Sidebar />;
-    },
+/**
+ * Register the Easy Attachments sidebar plugin.
+ */
+registerPlugin("easy-attachments-sidebar", {
+	render: Sidebar,
 });

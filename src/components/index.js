@@ -1,3 +1,9 @@
-export { default as SearchField } from './search-field';
-export { default as SearchResults } from './search-results';
-export { default as SearchUI } from './search';
+/**
+ * Component Exports
+ *
+ * @since 1.0.0
+ * @package EasyAttachments
+ */
+
+export { default as ImageItem } from "./ImageItem";
+export { default as Sidebar } from "./Sidebar";

@@ -1,185 +1,462 @@
 <?php
-
 /**
- * Blocks Initializer
+ * Plugin initialization and REST API registration.
  *
- * Enqueue CSS/JS of all the blocks.
- *
- * @since   1.0.0
- * @package 
- */
-
-// Exit if accessed directly.
-if (!defined('ABSPATH')) {
-    exit;
-}
-
-$upload_dir = wp_upload_dir();
-define('EASY_ATTACHMENTS_MEDIA_LIBRARY_PATH', $upload_dir['path']);
-define('EASY_ATTACHMENTS_MEDIA_LIBRARY_PATH_TEMP', $upload_dir['basedir'] . '/easy-attatchments');
-define('EASY_ATTACHMENTS_MEDIA_LIBRARY_URL', $upload_dir['url']);
-/**
- * Enqueue Gutenberg block assets for both frontend + backend.
- *
- * Assets enqueued:
- * 1. blocks.style.build.css - Frontend + Backend.
- * 2. blocks.build.js - Backend.
- * 3. blocks.editor.build.css - Backend.
- *
- * @uses {wp-blocks} for block type registration & related functions.
- * @uses {wp-element} for WP Element abstraction — structure of blocks.
- * @uses {wp-i18n} to internationalize the block's text.
- * @uses {wp-editor} for WP editor styles.
+ * @package EasyAttachments
  * @since 1.0.0
  */
-function easy_attachments_block_assets()
-{ 
-    // phpcs:ignore
-    $asset = include_once EASY_ATTACHMENTS_PATH . '/build/index.asset.php';
-    // Register block editor script for backend.
-    wp_register_script(
-        'easy_attachments-block-js', // Handle.
-        EASY_ATTACHMENTS_URI . 'build/index.js', // Block.build.js: We register the block here. Built with Webpack.
-        array('wp-blocks', 'wp-i18n', 'wp-element', 'wp-editor'), // Dependencies, defined above.
-        $asset['version'], // filemtime( plugin_dir_path( __DIR__ ) . 'dist/blocks.build.js' ), // Version: filemtime — Gets file modification time.
-        true // Enqueue the script in the footer.
-    );
 
-    // Register block editor styles for backend.
-    wp_register_style(
-        'easy_attachments-block-editor-css', // Handle.
-        EASY_ATTACHMENTS_URI . 'build/index.css', // Block editor CSS.
-        array('wp-edit-blocks'), // Dependency to include the CSS after it.
-        $asset['version'] // filemtime( plugin_dir_path( __DIR__ ) . 'dist/blocks.editor.build.css' ) // Version: File modification time.
-    );
+namespace EasyAttachments;
 
-    // WP Localized globals. Use dynamic PHP stuff in JavaScript via `Global` object.
-    wp_localize_script(
-        'easy_attachments-block-js',
-        'blkcanvasGlobal', // Array containing dynamic data for a JS Global.
-        [
-            'pluginDirPath' => plugin_dir_path(__DIR__),
-            'pluginDirUrl'  => plugin_dir_url(__FILE__),
-            'redirectLink'  => get_site_url(),
-            'nonce' => wp_create_nonce('wp_rest')
-            // Add more data here that you want to access from `Global` object.
-        ]
-    );
-
+// Exit if accessed directly.
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
 }
-// Hook: Block assets.
-add_action('init', 'easy_attachments_block_assets');
 
-
-/*
-Plugin Name: Sidebar plugin
-*/
-function easy_attachments_sidebar_plugin_script_enqueue()
-{
-    wp_enqueue_script('easy_attachments-block-js');
-    wp_enqueue_style('easy_attachments-block-editor-css');
-}
-add_action('enqueue_block_editor_assets', 'easy_attachments_sidebar_plugin_script_enqueue');
-
-
-add_action('rest_api_init', function () {
-    register_rest_route('easy-attachments/v1', '/download', array(
-        'methods' => 'POST',
-        'callback' => 'easy_attachments_download',
-        'permission_callback' => function () {
-            return current_user_can('edit_others_posts');
-        }
-
-    ));
-});
-
-function easy_attachments_download(WP_REST_Request $request)
-{
-    require_once ABSPATH . "wp-admin/includes/file.php";
-    require_once ABSPATH . "wp-admin/includes/media.php";
-    require_once ABSPATH . "wp-admin/includes/image.php";
-
-    // You can get the combined, merged set of parameters:
-    $post_id = (null !== $request->get_param('post_id')) ? $request->get_param('post_id') : 0;
-    $photo = (null !== $request->get_param('photo')) ? $request->get_param('photo') : null;
-    $download_link = (null !== $request->get_param('download_link')) ? sanitize_text_field($request->get_param('download_link')) : "";
-
-    $photo_alt_description = isset($photo['alt_description']) ? sanitize_text_field($photo['alt_description']) : "";
-    $photo_description = isset($photo['description']) ? sanitize_text_field($photo['description']) : "";
-
-    $photo_user_name = isset($photo['user']['name']) ? sanitize_text_field($photo['user']['name']) : "";
-    $title = "";
-    
-    if ($photo_description !== "") {
-        $title = $photo_description;
-        $photo_description = "$title / $photo_user_name via Unsplash";
-    }
-
-    // Sanity check inputs
-    if (!isset($download_link) || empty($download_link)) {
-        return $result;
-    }
- 
-    $url = esc_url_raw( $download_link );
-    $parse_url = wp_parse_url( $url );
-    $args = [];
-    wp_parse_str( $parse_url[ 'query' ], $args );
-    // Specific to Unsplash as the serve urls without file extensions.
-    $file_extension = isset( $args['fm'] ) ? '.' . $args['fm'] : '';
-    $url = $parse_url['scheme'] . '://' . $parse_url['host'] . $parse_url['path'];
-    // error_log(print_r([$args,$url],true));
-
-    // $image = media_sideload_image($url, $post_id, $photo_description, 'id');
-    
-    $file_array         = array();
-    $file_array['name'] = wp_basename( $url ) . $file_extension;
-
-    // Download file to temp location.
-    $file_array['tmp_name'] = download_url( $url );
-    $file_array['type'] = 'image/jpeg';
-    $file_array['error'] = 0;
-    $file_array['size'] = filesize( $file_array['tmp_name'] );
-
-    // If error storing temporarily, return the error.
-    if ( is_wp_error( $file_array['tmp_name'] ) ) {
-        return  ['action' => 'error', 'error' => $file_array, 'image_url' => $url, 'step' => 'download_url' ];
-    }
-
-    // Do the validation and storage stuff.
-    $image = media_handle_sideload( $file_array, $post_id, $photo_description );
-
-    // If error storing permanently, unlink.
-    if ( is_wp_error( $image ) ) {
-        @unlink( $file_array['tmp_name'] );
-        return  ['action' => 'error', 'error' => $image, 'image_url' => $url, 'step' => 'media_handle_sideload' ];
-    }
-
-    // Store the original attachment source in meta.
-    add_post_meta( $image, '_source_url', $file );
-
-    $attachment = get_post( $image );
-
-	if( !$attachment ) {
-        return  ['action' => 'error', 'message' => 'Attachment not found.'];
+/**
+ * Initialize plugin functionality.
+ */
+function init() {
+	// Define upload directory constants.
+	$upload_dir = wp_upload_dir();
+	if ( ! defined( 'EASY_ATTACHMENTS_MEDIA_PATH' ) ) {
+		define( 'EASY_ATTACHMENTS_MEDIA_PATH', $upload_dir['path'] );
 	}
-    
-    $updated = wp_update_post( array(
-		'ID' => $attachment->ID,
-		'post_title' => $title,
-		'post_content' => $photo_description,
-		'post_excerpt' => $photo_description,
-	) );
-	
-    update_post_meta( $attachment->ID, '_wp_attachment_image_alt', $title );
-	    
-    return array(
-        'success' => true,
-        'msg' => __('Image successfully uploaded to your media library!', 'easy-attachments'),
-        'id' => $attachment->ID,
-        'url' => wp_get_attachment_url($attachment->ID),
-        'alt' => $photo_description,
-        'caption' => $photo_description,
-        'admin_url' => admin_url(),
-    );
+	if ( ! defined( 'EASY_ATTACHMENTS_MEDIA_URL' ) ) {
+		define( 'EASY_ATTACHMENTS_MEDIA_URL', $upload_dir['url'] );
+	}
 
+	// Register assets.
+	add_action( 'init', __NAMESPACE__ . '\\register_assets' );
+	add_action( 'enqueue_block_editor_assets', __NAMESPACE__ . '\\enqueue_editor_assets' );
+
+	// Register REST API routes.
+	add_action( 'rest_api_init', __NAMESPACE__ . '\\register_rest_routes' );
+}
+add_action( 'plugins_loaded', __NAMESPACE__ . '\\init' );
+
+/**
+ * Register plugin assets.
+ *
+ * @since 1.0.0
+ * @return void
+ */
+function register_assets() {
+	$asset_file = EASY_ATTACHMENTS_PATH . 'build/index.asset.php';
+
+	if ( ! file_exists( $asset_file ) ) {
+		return;
+	}
+
+	$asset = include $asset_file;
+
+	// Register editor script.
+	wp_register_script(
+		'easy-attachments-editor',
+		EASY_ATTACHMENTS_URI . 'build/index.js',
+		$asset['dependencies'],
+		$asset['version'],
+		true
+	);
+
+	// Register editor styles.
+	wp_register_style(
+		'easy-attachments-editor',
+		EASY_ATTACHMENTS_URI . 'build/index.css',
+		array( 'wp-edit-blocks' ),
+		$asset['version']
+	);
+}
+
+/**
+ * Enqueue block editor assets.
+ *
+ * @since 1.0.0
+ * @return void
+ */
+function enqueue_editor_assets() {
+	wp_enqueue_script( 'easy-attachments-editor' );
+	wp_enqueue_style( 'easy-attachments-editor' );
+
+	// Localize script with configuration.
+	$permalink_structure   = get_option( 'permalink_structure' );
+	$use_pretty_permalinks = ! empty( $permalink_structure );
+
+	wp_localize_script(
+		'easy-attachments-editor',
+		'easyAttachmentsConfig',
+		array(
+			'restUrl'             => $use_pretty_permalinks
+				? rest_url( 'easy-attachments/v1/download' )
+				: home_url( '/?rest_route=/easy-attachments/v1/download' ),
+			'nonce'               => wp_create_nonce( 'wp_rest' ),
+			'usePrettyPermalinks' => $use_pretty_permalinks,
+		)
+	);
+}
+
+/**
+ * Register REST API routes.
+ *
+ * @since 1.0.0
+ * @return void
+ */
+function register_rest_routes() {
+	register_rest_route(
+		'easy-attachments/v1',
+		'/download',
+		array(
+			'methods'             => 'POST',
+			'callback'            => __NAMESPACE__ . '\\handle_image_download',
+			'permission_callback' => function () {
+				return current_user_can( 'upload_files' );
+			},
+			'args'                => array(
+				'post_id'       => array(
+					'type'              => 'integer',
+					'default'           => 0,
+					'sanitize_callback' => 'absint',
+				),
+				'photo'         => array(
+					'type' => 'object',
+				),
+				'download_link' => array(
+					'type'              => 'string',
+					'required'          => true,
+					'sanitize_callback' => 'esc_url_raw',
+				),
+			),
+		)
+	);
+}
+
+/**
+ * Handle image download REST API request.
+ *
+ * @since 1.0.0
+ *
+ * @param \WP_REST_Request $request The REST API request object.
+ * @return \WP_REST_Response|\WP_Error Response object on success, WP_Error on failure.
+ */
+function handle_image_download( \WP_REST_Request $request ) {
+	// Start output buffering to catch any unexpected output.
+	ob_start();
+
+	try {
+		// Load required WordPress admin functions.
+		require_admin_dependencies();
+
+		// Extract parameters.
+		$post_id       = absint( $request->get_param( 'post_id' ) );
+		$photo         = $request->get_param( 'photo' );
+		$download_link = $request->get_param( 'download_link' );
+
+		// Validate download link.
+		if ( empty( $download_link ) ) {
+			ob_end_clean();
+			return new \WP_Error(
+				'missing_download_link',
+				__( 'Download link is required.', 'easy-attachments' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		// Extract and sanitize photo metadata.
+		$metadata = extract_photo_metadata( $photo );
+
+		// Parse and validate the image URL.
+		$url_data = parse_image_url( $download_link );
+		if ( is_wp_error( $url_data ) ) {
+			ob_end_clean();
+			return $url_data;
+		}
+
+		// Download the image file.
+		$file_array = download_remote_file( $url_data['url'], $url_data['extension'] );
+		if ( is_wp_error( $file_array ) ) {
+			ob_end_clean();
+			return $file_array;
+		}
+
+		// Import into media library.
+		$attachment_id = media_handle_sideload( $file_array, $post_id, $metadata['description'] );
+
+		if ( is_wp_error( $attachment_id ) ) {
+			@unlink( $file_array['tmp_name'] );
+			ob_end_clean();
+			return new \WP_Error(
+				'upload_failed',
+				$attachment_id->get_error_message(),
+				array( 'status' => 500 )
+			);
+		}
+
+		// Update attachment metadata.
+		update_attachment_metadata( $attachment_id, $metadata, $download_link );
+
+		// Prepare response.
+		$attachment = get_post( $attachment_id );
+		$response   = array(
+			'success' => true,
+			'message' => __( 'Image successfully uploaded to your media library!', 'easy-attachments' ),
+			'data'    => array(
+				'id'          => $attachment_id,
+				'url'         => wp_get_attachment_url( $attachment_id ),
+				'title'       => $attachment->post_title,
+				'alt'         => get_post_meta( $attachment_id, '_wp_attachment_image_alt', true ),
+				'caption'     => $attachment->post_excerpt,
+				'description' => $attachment->post_content,
+				'mime_type'   => get_post_mime_type( $attachment_id ),
+				'edit_url'    => admin_url( 'post.php?post=' . $attachment_id . '&action=edit' ),
+			),
+		);
+
+		ob_end_clean();
+		return new \WP_REST_Response( $response, 200 );
+
+	} catch ( \Exception $e ) {
+		ob_end_clean();
+		return new \WP_Error(
+			'server_error',
+			sprintf( __( 'Server error: %s', 'easy-attachments' ), $e->getMessage() ),
+			array( 'status' => 500 )
+		);
+	}
+}
+
+/**
+ * Load required WordPress admin dependencies.
+ *
+ * @since 1.0.0
+ * @return void
+ */
+function require_admin_dependencies() {
+	if ( ! function_exists( 'download_url' ) ) {
+		require_once ABSPATH . 'wp-admin/includes/file.php';
+	}
+	if ( ! function_exists( 'media_handle_sideload' ) ) {
+		require_once ABSPATH . 'wp-admin/includes/media.php';
+	}
+	if ( ! function_exists( 'wp_read_image_metadata' ) ) {
+		require_once ABSPATH . 'wp-admin/includes/image.php';
+	}
+}
+
+/**
+ * Extract and sanitize photo metadata.
+ *
+ * @since 1.0.0
+ *
+ * @param array|null $photo Photo data from request.
+ * @return array Sanitized photo metadata.
+ */
+function extract_photo_metadata( $photo ) {
+	$metadata = array(
+		'alt_description' => '',
+		'description'     => '',
+		'user_name'       => '',
+		'title'           => '',
+	);
+
+	if ( ! is_array( $photo ) ) {
+		return $metadata;
+	}
+
+	$metadata['alt_description'] = isset( $photo['alt_description'] )
+		? sanitize_text_field( $photo['alt_description'] )
+		: '';
+
+	$metadata['description'] = isset( $photo['description'] )
+		? sanitize_text_field( $photo['description'] )
+		: '';
+
+	$metadata['user_name'] = isset( $photo['user']['name'] )
+		? sanitize_text_field( $photo['user']['name'] )
+		: '';
+
+	// Use description as title if available.
+	if ( ! empty( $metadata['description'] ) ) {
+		$metadata['title']       = $metadata['description'];
+		$metadata['description'] = sprintf(
+			'%s / %s via Unsplash',
+			$metadata['title'],
+			$metadata['user_name']
+		);
+	}
+
+	return $metadata;
+}
+
+/**
+ * Parse and validate an image URL.
+ *
+ * @since 1.0.0
+ *
+ * @param string $url The URL to parse.
+ * @return array|\WP_Error Array with 'url' and 'extension' keys, or WP_Error on failure.
+ */
+function parse_image_url( $url ) {
+	$url = esc_url_raw( $url );
+
+	if ( empty( $url ) ) {
+		return new \WP_Error(
+			'invalid_url',
+			__( 'Invalid or malformed URL.', 'easy-attachments' ),
+			array( 'status' => 400 )
+		);
+	}
+
+	$parsed = wp_parse_url( $url );
+
+	if ( ! isset( $parsed['scheme'], $parsed['host'], $parsed['path'] ) ) {
+		return new \WP_Error(
+			'invalid_url',
+			__( 'URL must contain scheme, host, and path.', 'easy-attachments' ),
+			array( 'status' => 400 )
+		);
+	}
+
+	// Extract file extension from query parameter (Unsplash-specific).
+	$file_extension = '';
+	if ( isset( $parsed['query'] ) ) {
+		$args = array();
+		wp_parse_str( $parsed['query'], $args );
+		$file_extension = isset( $args['fm'] ) ? '.' . sanitize_text_field( $args['fm'] ) : '';
+	}
+
+	// Fallback to path extension.
+	if ( empty( $file_extension ) ) {
+		$path_extension = pathinfo( $parsed['path'], PATHINFO_EXTENSION );
+		if ( ! empty( $path_extension ) ) {
+			$file_extension = '.' . $path_extension;
+		}
+	}
+
+	// Reconstruct clean URL.
+	$clean_url = $parsed['scheme'] . '://' . $parsed['host'] . $parsed['path'];
+	if ( isset( $parsed['query'] ) ) {
+		$clean_url .= '?' . $parsed['query'];
+	}
+
+	return array(
+		'url'       => $clean_url,
+		'extension' => $file_extension,
+	);
+}
+
+/**
+ * Download a file from a URL to a temporary location.
+ *
+ * @since 1.0.0
+ *
+ * @param string $url       The URL to download from.
+ * @param string $extension The file extension to use.
+ * @return array|\WP_Error File array on success, WP_Error on failure.
+ */
+function download_remote_file( $url, $extension = '' ) {
+	$file_array         = array();
+	$file_array['name'] = wp_basename( $url ) . $extension;
+
+	// Download file to temp location.
+	$tmp_file = download_url( $url );
+
+	if ( is_wp_error( $tmp_file ) ) {
+		return new \WP_Error(
+			'download_failed',
+			sprintf(
+				__( 'Failed to download file: %s', 'easy-attachments' ),
+				$tmp_file->get_error_message()
+			),
+			array( 'status' => 500 )
+		);
+	}
+
+	$file_array['tmp_name'] = $tmp_file;
+
+	// Detect MIME type.
+	$file_type          = wp_check_filetype_and_ext( $tmp_file, $file_array['name'] );
+	$file_array['type'] = $file_type['type'] ?: 'image/jpeg';
+	$file_array['error'] = 0;
+	$file_array['size'] = filesize( $tmp_file );
+
+	// Validate file size.
+	if ( false === $file_array['size'] || 0 === $file_array['size'] ) {
+		@unlink( $tmp_file );
+		return new \WP_Error(
+			'invalid_file',
+			__( 'Downloaded file is empty or unreadable.', 'easy-attachments' ),
+			array( 'status' => 500 )
+		);
+	}
+
+	// Check file size limits.
+	$max_size = apply_filters( 'easy_attachments_max_file_size', 10 * 1024 * 1024 ); // 10MB default.
+	if ( $file_array['size'] > $max_size ) {
+		@unlink( $tmp_file );
+		return new \WP_Error(
+			'file_too_large',
+			sprintf(
+				__( 'File size exceeds maximum allowed size of %s.', 'easy-attachments' ),
+				size_format( $max_size )
+			),
+			array( 'status' => 400 )
+		);
+	}
+
+	return $file_array;
+}
+
+/**
+ * Update attachment post metadata and custom fields.
+ *
+ * @since 1.0.0
+ *
+ * @param int    $attachment_id The attachment post ID.
+ * @param array  $metadata      Photo metadata array.
+ * @param string $source_url    Original source URL.
+ * @return bool|\WP_Error True on success, WP_Error on failure.
+ */
+function update_attachment_metadata( $attachment_id, $metadata, $source_url ) {
+	$attachment = get_post( $attachment_id );
+
+	if ( ! $attachment ) {
+		return new \WP_Error(
+			'attachment_not_found',
+			__( 'Attachment post not found.', 'easy-attachments' ),
+			array( 'status' => 404 )
+		);
+	}
+
+	// Update post fields.
+	$update_data = array( 'ID' => $attachment_id );
+
+	if ( ! empty( $metadata['title'] ) ) {
+		$update_data['post_title'] = $metadata['title'];
+	}
+
+	if ( ! empty( $metadata['description'] ) ) {
+		$update_data['post_content'] = $metadata['description'];
+		$update_data['post_excerpt'] = $metadata['description'];
+	}
+
+	$updated = wp_update_post( $update_data, true );
+
+	if ( is_wp_error( $updated ) ) {
+		return $updated;
+	}
+
+	// Update alt text.
+	if ( ! empty( $metadata['title'] ) ) {
+		update_post_meta( $attachment_id, '_wp_attachment_image_alt', $metadata['title'] );
+	}
+
+	// Store original source URL.
+	update_post_meta( $attachment_id, '_source_url', esc_url_raw( $source_url ) );
+
+	// Store additional metadata.
+	if ( ! empty( $metadata['user_name'] ) ) {
+		update_post_meta( $attachment_id, '_source_author', sanitize_text_field( $metadata['user_name'] ) );
+	}
+
+	return true;
 }
