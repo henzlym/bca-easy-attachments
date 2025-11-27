@@ -140,9 +140,10 @@ function Sidebar() {
 	 *
 	 * @param {Object} photo  The photo object from Unsplash.
 	 * @param {string} action The action to perform (in-post, featured-image, or media-library).
+	 * @param {string} size   The image size to download (raw, full, regular, small, thumb).
 	 */
 	const handleDownload = useCallback(
-		async (photo, action = "media-library") => {
+		async (photo, action = "media-library", size = "full") => {
 			if (isDownloading) {
 				return;
 			}
@@ -162,6 +163,9 @@ function Sidebar() {
 					window.easyAttachmentsConfig?.restUrl ||
 					"/wp-json/easy-attachments/v1/download";
 
+				// Get the appropriate download URL based on size selection
+				const downloadUrl = photo.urls[size] || photo.urls.full;
+
 				// Download image to WordPress media library.
 				const response = await fetch(restUrl, {
 					method: "POST",
@@ -172,7 +176,8 @@ function Sidebar() {
 					body: JSON.stringify({
 						post_id: currentPostId,
 						photo,
-						download_link: photo.urls.full,
+						download_link: downloadUrl,
+						image_size: size,
 					}),
 				});
 
@@ -222,6 +227,18 @@ function Sidebar() {
 					successMessage += " and set as the featured image.";
 				} else {
 					successMessage += ".";
+				}
+
+				// Add size info to message
+				const sizeLabels = {
+					raw: "Raw (Original)",
+					full: "Full",
+					regular: "Regular",
+					small: "Small",
+					thumb: "Thumbnail",
+				};
+				if (sizeLabels[size]) {
+					successMessage += ` Size: ${sizeLabels[size]}.`;
 				}
 
 				createSuccessNotice(successMessage, { isDismissible: true });

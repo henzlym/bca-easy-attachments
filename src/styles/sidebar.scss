@@ -173,6 +173,53 @@
 				height: 20px;
 			}
 		}
+
+		// Size dropdown menu
+		.components-dropdown {
+			.components-button {
+				min-width: 36px;
+			}
+		}
+
+		.components-menu-group {
+			margin: 0;
+		}
+
+		.components-menu-item__button {
+			display: flex;
+			flex-direction: column;
+			align-items: flex-start;
+			padding: 12px 16px;
+			min-width: 200px;
+
+			.size-label {
+				font-size: 14px;
+				font-weight: 500;
+				color: #1e1e1e;
+
+				.recommended-badge {
+					color: #00a32a;
+					font-size: 12px;
+					font-weight: 600;
+				}
+			}
+
+			.size-info {
+				font-size: 12px;
+				color: #757575;
+				margin-top: 2px;
+			}
+
+			&:hover {
+				.size-label {
+					color: #2271b1;
+
+					.recommended-badge {
+						color: #008a20;
+					}
+				}
+			}
+		}
 	}
 
 	// Overlay for download states
